@@ -30,11 +30,17 @@
 						<input type="file" id="dataInputFile">
 						<p class="help-block">Data should be a comma separated values file (.csv).</p>
 					</div>
-					<button type="submit" class="btn btn-default">Add Data File</button>
+					<button type="submit" class="btn btn-success">Add Data File</button>
 						
-					<hr>
+					
 					<h3>Settings</h3>
-					<div class="form-group">
+					<div class="form-group" id="dataDisplayOption">
+						<div class="radio">
+							<label>
+								<input type="radio" name="dataDisplayOption" value="location" checked/>
+								By Location Only
+							</label>
+						</div>
 						<div class="radio">
 							<label>
 								<input type="radio" name="dataDisplayOption" value="total_number"/>
@@ -47,21 +53,30 @@
 								By Weight Ratio
 							</label>
 						</div>
+						<div class="radio">
+							<label>
+								<input type="radio" name="dataDisplayOption" value="heatmap"/>
+								Heatmap
+							</label>
+						</div>
 					</div>
 					
-					<hr>
+					
 					<h3>Manual Data Entry</h3>
 					<div class="form-group">
-						<label for="zipCode">Zip Code</label>
-						<input type="text" id="zipCodeEntry" class="form-control" placeholder="12180"></input>
-						<label for="count">Count</label>
-						<input type="text" id="countEntry" class="form-control" placeholder="1824"></input>
-						<label for="weight">Weight</label>
-						<input type="text" id="weightEntry" class="form-control" placeholder="1"></input>
+						<label class="sr-only" for="zipCode">Zip Code</label>
+						<input type="text" id="zipCodeEntry" class="form-control" placeholder="Zip Code"></input>
+						<label class="sr-only" for="count">Count</label>
+						<input type="number" id="countEntry" class="form-control" placeholder="Count"></input>
+						<label class="sr-only" for="weight">Weight</label>
+						<input type="number" id="weightEntry" class="form-control" placeholder="Weight"></input>
 					</div>
-					<button type="submit" id="addDatumPoint" class="btn btn-default">Add</button>
-					
-					<hr>
+					<button type="submit" id="addDatumPoint" class="btn btn-success">Add</button>
+					<button type="submit" id="clearForm" class="btn btn-warning">Clear Form</button>
+					<br></br>
+					<button type="button" id="clearMap" class="btn btn-sm btn-danger">Clear Map</button>
+					<button type="button" id="eraseData" class="btn btn-sm btn-danger">Erase Data</button>
+					<br></br>
 					<div id="alertBox"></div>
 					
 				</div>
@@ -69,10 +84,7 @@
 				<div id="map-canvas"></div>
 				
 			</div>
-		</div>
-		
-
-		
+		</div>		
 		
 		<script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDUwNhgLwmrVHILVKTOycCbyRfCN3jgqOo"></script>
 		<script src="script/jquery-2.1.1.min.js"></script>
