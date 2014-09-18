@@ -3,6 +3,7 @@ var map;
 var geocoder;
 var mapData = {};
 var mapItems = [];
+var zipDatabase = {};
 var c_display_option;
 
 // initialize the map and geocoder
@@ -14,6 +15,12 @@ function initialize() {
 	map = new google.maps.Map(document.getElementById('map-canvas'),mapOptions);
 	geocoder = new google.maps.Geocoder();
 	c_display_option = $("input[name=dataDisplayOption]:checked").val();
+	
+	// get any stored data in cookies
+	var cookies = $.cookie("zip-plot-latlong-data");
+	if (cookies) {
+		zipDatabase = JSON.parse(cookies);
+	}
 }
 
 // clear everything on the map (in mapItems)
@@ -51,27 +58,43 @@ function dataResponse(success) {
 
 // take a zip code as a string and mark its location on the map
 function plotMapMarker(zipCode,count,weight) {
-	geocoder.geocode( {'address':zipCode}, function(data, status) {
-		if (status == google.maps.GeocoderStatus.OK) {
-			var marker = new google.maps.Marker({
-				map: map,
-				position: data[0].geometry.location
-			});
-			// add the marker to the list 
-			mapItems.push(marker);
-			// save the data
-			mapData[zipCode] = {
-				"count": count,
-				"weight": weight,
-				"loc": data[0].geometry.location
+	
+	// check the database to see if we have a LatLong for this code
+	if (zipDatabase[zipCode]) {
+		var Lat = zipDatabase[zipCode]['k'];
+		var Long = zipDatabase[zipCode]['B'];
+		var LatLong = new google.maps.LatLng(Lat,Long);
+		mapItems.push( plotLocation(LatLong) );
+	}
+	
+	// if we don't have then get it with geocoder api call
+	else {
+		geocoder.geocode( {'address':zipCode}, function(data, status) {
+			if (status == google.maps.GeocoderStatus.OK) {
+				var marker = new google.maps.Marker({
+					map: map,
+					position: data[0].geometry.location
+				});
+				// add the marker to the list 
+				mapItems.push(marker);
+				// save the data
+				mapData[zipCode] = {
+					"count": count,
+					"weight": weight,
+					"loc": data[0].geometry.location
+				}
+				// save to databank
+				zipDatabase[zipCode] = data[0].geometry.location;
+				// update the cookie!
+				$.cookie("zip-plot-latlong-data", JSON.stringify(zipDatabase));
+				dataResponse(true);
 			}
-			dataResponse(true);
-		}
-		else {
-			console.log("error in request!");
-			dataResponse(false)
-		}
-	});
+			else {
+				console.log("error in request!");
+				dataResponse(false)
+			}
+		});
+	}
 }
 
 // plot a marker given the location
