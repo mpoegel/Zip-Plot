@@ -6,7 +6,7 @@ var mapItems = [];
 var zipDatabase = {};
 var c_display_option;
 
-// initialize the map and geocoder
+// initialize the map and geocoder and other stuff
 function initialize() {
 	var mapOptions = {
 		center: { lat: 39.50, lng: -89.35},
@@ -20,6 +20,27 @@ function initialize() {
 	var cookies = $.cookie("zip-plot-latlong-data");
 	if (cookies) {
 		zipDatabase = JSON.parse(cookies);
+	}
+}
+
+// returns the plotting function according to the current setting
+function getPlotFunction() {
+	// route the data to the appropriate func depending on the current display setting	
+	if (c_display_option == "location") {
+		return plotMapMarker;
+	}
+	else if (c_display_option == "total_number") {
+		return null;
+	}
+	else if (c_display_option == "weight_ratio") {
+		return null;
+	}
+	else if (c_display_option == "heatmap") {
+		return null;
+	}
+	else { 
+		alert("Something went wrong!");
+		return null;
 	}
 }
 
@@ -59,12 +80,22 @@ function dataResponse(success) {
 // take a zip code as a string and mark its location on the map
 function plotMapMarker(zipCode,count,weight) {
 	
+	// clear alerts
+	$("#alertBox").empty();
+	
 	// check the database to see if we have a LatLong for this code
 	if (zipDatabase[zipCode]) {
 		var Lat = zipDatabase[zipCode]['k'];
 		var Long = zipDatabase[zipCode]['B'];
 		var LatLong = new google.maps.LatLng(Lat,Long);
+		// create a new marker
 		mapItems.push( plotLocation(LatLong) );
+		// save for the current session
+		mapData[zipCode] = {
+			"count": count,
+			"weight": weight,
+			"loc": LatLong
+		}
 	}
 	
 	// if we don't have then get it with geocoder api call
@@ -105,7 +136,6 @@ function plotLocation(location) {
 	});
 	return marker;
 }
-
 
 // capture the data from manual entry and plot appropriately
 function addManualData() {
@@ -156,20 +186,9 @@ function addManualData() {
 		return;
 	}
 	
-	// route the data to the appropriate func depending on the current display setting	
-	if (c_display_option == "location") {
-		plotMapMarker(code,count,weight);
-	}
-	else if (c_display_option == "total_number") {
-		
-	}
-	else if (c_display_option == "weight_ratio") {
-		
-	}
-	else if (c_display_option == "heatmap") {
-		
-	}
-	else { alert("Something went wrong!"); }
+	// get the function to plot the data according to the current setting 
+	var plot = getPlotFunction();
+	plot(code,count,weight);	
 	
 	// clear the data entered in the form
 	clearForm();
@@ -218,6 +237,69 @@ function plotAllData() {
 	});
 }
 
+function addDataFromFile() {
+	// grab the file object
+	var file = $("#dataInputFile")[0].files[0];
+	// open and read the file 
+	if (file) {
+		var data = [];
+		var errors = 0;
+		var successes = 0;
+		// create a reader (FileReader API)
+		var reader = new FileReader();
+		reader.readAsText(file);
+		// ASYNCHRONOUS CALL
+		// function that will be called when the file is loaded
+		reader.onload = function(e) {
+			var text = reader.result;
+			// each datum point is on its own line so we split by new line into an array
+			data = text.split("\n");
+			// loop over each data point and split at commas
+			for (var i=0; i<data.length; i++) {
+				data[i] = data[i].split(",");
+			}
+			
+			// get the function to plot the data according to the current setting 
+			var plot = getPlotFunction();
+			
+			// loop over all the data and plot it 
+			for (var i=0; i<data.length; i++) {
+				// error check the data format
+				if (data[i] == '') {
+					continue;
+				}
+				else if (data[i] < 2) { // not enough data to plot
+					errors++;
+				}				
+				else {
+					// basic plot to start
+					var code = data[i][0];
+					var count = data[i][1];
+					var weight = 0;
+					
+					plot(code,count,weight);
+					successes++;
+				}
+			}
+			
+			// sloppy but maybe I'll fix it later
+			$("#alertBox").empty();
+			
+			// show the success rate of reading the file 
+			var alert_text = successes + " data points (datum point) read successfully. \n " + errors + " error(s).";
+			var alert_type = "";
+			if (errors == 0) { alert_type = "alert alert-success"; }
+			else if (successes == 0) { alert_type = "alert alert-danger"; }
+			else { alert_type = "alert alert-warning"; }
+			$("<div/>", {
+				"class": alert_type,
+				text: alert_text,
+			}).append('<button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>').appendTo("#alertBox");
+			
+		}; // end onload function
+	} // end if (file)
+} // end addDataFromFile function
+
 // ==================================================================
 $(document).ready(function() {
 	
@@ -238,5 +320,8 @@ $(document).ready(function() {
 	
 	// clear the data in the MDE form
 	$("#clearForm").click(clearForm);
+	
+	// listener to add data from a file 
+	$("#addFile").click(addDataFromFile);
 	
 });
