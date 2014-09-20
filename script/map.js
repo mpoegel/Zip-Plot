@@ -5,12 +5,14 @@ var mapData = {};
 var mapItems = [];
 var zipDatabase = {};
 var c_display_option;
+var total_count = 0;
+var infoWindow;
 
 // initialize the map and geocoder and other stuff
 function initialize() {
 	var mapOptions = {
-		center: { lat: 39.50, lng: -89.35},
-		zoom: 4
+		center: { lat: 42.652081, lng: -73.754079},
+		zoom: 8
 	};
 	map = new google.maps.Map(document.getElementById('map-canvas'),mapOptions);
 	geocoder = new google.maps.Geocoder();
@@ -21,16 +23,57 @@ function initialize() {
 	if (cookies) {
 		zipDatabase = JSON.parse(cookies);
 	}
+	
+	// initialize the info window with no location or text
+	infoWindow = new google.maps.InfoWindow({
+		content: 'hello'
+	});
+}
+
+// takes fraction of a whole and returns an RGB representation of that fraction
+function fractionToRGB(part, total) {
+	var i = Math.floor(part / total * 100);
+	var n = 255 - Math.floor(part / total * 155);
+	var hex = n.toString(16);
+	var rgb = '';
+	
+	// 0 to 33 is red
+	if (i < 34) {
+		rgb = "#" + hex + "0000";
+	}
+	// 34 to 66 is green
+	else if (i < 67) {
+		rgb = "#" + "00" + hex + "00";
+	}
+	// 67 to 100 is blue
+	else {
+		rgb = "#0000" + hex;
+	}
+
+	return rgb;
+}
+
+// binds an info window to the map item to display on hover
+function bindInfoWindow(item, loc, code, count, weight) {
+	google.maps.event.addListener(item, 'mouseover', function() {
+		infoWindow.setContent("<p>" + code + "</p>");
+		infoWindow.setPosition(loc);
+		infoWindow.open(map);
+	});
+	google.maps.event.addListener(item, 'mouseout', function() {
+		infoWindow.close();
+	});
+	return item;
 }
 
 // returns the plotting function according to the current setting
 function getPlotFunction() {
 	// route the data to the appropriate func depending on the current display setting	
 	if (c_display_option == "location") {
-		return plotMapMarker;
+		return plotMapMarkerZip;
 	}
 	else if (c_display_option == "total_number") {
-		return null;
+		return plotMapCircleZip;
 	}
 	else if (c_display_option == "weight_ratio") {
 		return null;
@@ -78,7 +121,7 @@ function dataResponse(success) {
 }
 
 // take a zip code as a string and mark its location on the map
-function plotMapMarker(zipCode,count,weight) {
+function plotMapMarkerZip(zipCode,count,weight) {
 	
 	// clear alerts
 	$("#alertBox").empty();
@@ -89,7 +132,7 @@ function plotMapMarker(zipCode,count,weight) {
 		var Long = zipDatabase[zipCode]['B'];
 		var LatLong = new google.maps.LatLng(Lat,Long);
 		// create a new marker
-		mapItems.push( plotLocation(LatLong) );
+		mapItems.push( bindInfoWindow(plotMapMarker(LatLong), LatLong, zipCode, count, weight) );
 		// save for the current session
 		mapData[zipCode] = {
 			"count": count,
@@ -107,7 +150,7 @@ function plotMapMarker(zipCode,count,weight) {
 					position: data[0].geometry.location
 				});
 				// add the marker to the list 
-				mapItems.push(marker);
+				mapItems.push( bindInfoWindow(marker, data[0].geometry.location, zipCode, count, weight) );
 				// save the data
 				mapData[zipCode] = {
 					"count": count,
@@ -129,12 +172,86 @@ function plotMapMarker(zipCode,count,weight) {
 }
 
 // plot a marker given the location
-function plotLocation(location) {
+function plotMapMarker(location) {
 	var marker = new google.maps.Marker({
 		map: map,
 		position: location
 	});
 	return marker;
+}
+
+// plot the zip code as a circle on the map
+function plotMapCircleZip(zipCode,count,weight) {
+	
+	// check the database to see if we have a LatLong for this code
+	if (zipDatabase[zipCode]) {
+		var Lat = zipDatabase[zipCode]['k'];
+		var Long = zipDatabase[zipCode]['B'];
+		var LatLong = new google.maps.LatLng(Lat,Long);
+		// create a new marker
+		mapItems.push( bindInfoWindow(plotMapCircle(LatLong,count), LatLong, zipCode, count, weight) );
+		// save for the current session
+		mapData[zipCode] = {
+			"count": count,
+			"weight": weight,
+			"loc": LatLong
+		}
+	}
+	
+	// if we don't have then get it with geocoder api call
+	else {
+		geocoder.geocode( {'address':zipCode}, function(data, status) {
+			if (status == google.maps.GeocoderStatus.OK) {
+				var color = fractionToRGB(count, total_count);
+				var circleOptions = {
+					strokeColor: color,
+					strokeOpacity: 0.35,
+					strokeWeight: 2,
+					fillColor: color,
+					fillOpacity: 0.35,
+					map: map,
+					center: data[0].geometry.location,
+					radius: 5000
+				};
+				mapItems.push( bindInfoWindow(new google.maps.Circle(circleOptions), data[0].geometry.location, zipCode, count, weight) );
+				// add the marker to the list 
+				mapItems.push(circle);
+				// save the data
+				mapData[zipCode] = {
+					"count": count,
+					"weight": weight,
+					"loc": data[0].geometry.location
+				}
+				// save to databank
+				zipDatabase[zipCode] = data[0].geometry.location;
+				// update the cookie!
+				$.cookie("zip-plot-latlong-data", JSON.stringify(zipDatabase));
+				dataResponse(true);
+			}
+			else {
+				console.log("error in request!");
+				dataResponse(false)
+			}
+		});
+	}
+	
+}
+
+// plot the location as a circle on the map
+function plotMapCircle(location,count) {
+	var color = fractionToRGB(count, total_count);
+	var circleOptions = {
+		strokeColor: color,
+		strokeOpacity: 0.35,
+		strokeWeight: 2,
+		fillColor: color,
+		fillOpacity: 0.35,
+		map: map,
+		center: location,
+		radius: 5000
+	};
+	var circle = new google.maps.Circle(circleOptions);
+	return circle;
 }
 
 // capture the data from manual entry and plot appropriately
@@ -187,8 +304,10 @@ function addManualData() {
 	}
 	
 	// get the function to plot the data according to the current setting 
+	count = parseInt(count);
 	var plot = getPlotFunction();
-	plot(code,count,weight);	
+	plot(code,count,weight);
+	total_count += count;
 	
 	// clear the data entered in the form
 	clearForm();
@@ -223,10 +342,10 @@ function plotAllData() {
 		var loc = v["loc"];
 		// map it depending on the selected option
 		if (c_display_option == "location") {
-			mapItems.push(plotLocation(loc));
+			mapItems.push(bindInfoWindow(plotMapMarker(loc), loc, code, count, weight));
 		}
 		else if (c_display_option == "total_number") {
-			
+			mapItems.push(bindInfoWindow(plotMapCircle(loc,count), loc, code, count, weight));
 		}
 		else if (c_display_option == "weight_ratio") {
 			
@@ -275,6 +394,8 @@ function addDataFromFile() {
 					// basic plot to start
 					var code = data[i][0];
 					var count = data[i][1];
+					count = parseInt(count);
+					total_count += count;
 					var weight = 0;
 					
 					plot(code,count,weight);
