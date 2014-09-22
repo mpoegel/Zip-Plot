@@ -3,7 +3,9 @@ var map;
 var geocoder;
 var mapData = {};
 var mapItems = [];
-var zipDatabase = {};
+var zipDatabase = [];
+var curr_cookie_name = "zip-plot-latlong-data"
+var curr_db_num = 0;
 var c_display_option;
 var total_count = 0;
 var infoWindow;
@@ -19,9 +21,16 @@ function initialize() {
 	c_display_option = $("input[name=dataDisplayOption]:checked").val();
 	
 	// get any stored data in cookies
-	var cookies = $.cookie("zip-plot-latlong-data");
-	if (cookies) {
-		zipDatabase = JSON.parse(cookies);
+	var cookies = $.cookie("zip-plot-latlong-data-0");
+	var i = 1;
+	while (cookies) {
+		zipDatabase.push(JSON.parse(cookies));
+		cookies = $.cookie("zip-plot-latlong-data-" + i.toString());
+		i++;
+		curr_db_num++;
+	}
+	if (!zipDatabase[curr_db_num]) {
+		zipDatabase.push({});
 	}
 	
 	// initialize the info window with no location or text
@@ -29,23 +38,36 @@ function initialize() {
 		content: 'hello'
 	});
 }
+function componentToHex(c) {
+	var hex = c.toString(16);
+	return hex.length == 1 ? "0" + hex : hex;
+}
+
+function sleep(milliseconds) {
+  var start = new Date().getTime();
+  for (var i = 0; i < 1e7; i++) {
+    if ((new Date().getTime() - start) > milliseconds){
+      break;
+    }
+  }
+}
 
 // takes fraction of a whole and returns an RGB representation of that fraction
 function fractionToRGB(part, total) {
-	var i = Math.floor(part / total * 100);
-	var n = 255 - Math.floor(part / total * 155);
+	var i = Math.floor( Math.log(part / total * 100) * 100);
+	var n = 255 - Math.floor(part / total * 255);
 	var hex = n.toString(16);
 	var rgb = '';
 	
-	// 0 to 33 is red
-	if (i < 34) {
+	// less than 1 is red
+	if (i < Math.log(Math.sqrt(total))) {
 		rgb = "#" + hex + "0000";
 	}
-	// 34 to 66 is green
-	else if (i < 67) {
+	// less than 3 is green
+	else if (i < Math.log(Math.sqrt(total)*10)) {
 		rgb = "#" + "00" + hex + "00";
 	}
-	// 67 to 100 is blue
+	// greater than 3 is blue
 	else {
 		rgb = "#0000" + hex;
 	}
@@ -126,23 +148,27 @@ function plotMapMarkerZip(zipCode,count,weight) {
 	// clear alerts
 	$("#alertBox").empty();
 	
+	var found = false;
 	// check the database to see if we have a LatLong for this code
-	if (zipDatabase[zipCode]) {
-		var Lat = zipDatabase[zipCode]['k'];
-		var Long = zipDatabase[zipCode]['B'];
-		var LatLong = new google.maps.LatLng(Lat,Long);
-		// create a new marker
-		mapItems.push( bindInfoWindow(plotMapMarker(LatLong), LatLong, zipCode, count, weight) );
-		// save for the current session
-		mapData[zipCode] = {
-			"count": count,
-			"weight": weight,
-			"loc": LatLong
+	for (var i=0; i<zipDatabase.length; i++) {
+		if (zipDatabase[i][zipCode]) {
+			var Lat = zipDatabase[i][zipCode]['k'];
+			var Long = zipDatabase[i][zipCode]['B'];
+			var LatLong = new google.maps.LatLng(Lat,Long);
+			// create a new marker
+			mapItems.push( bindInfoWindow(plotMapMarker(LatLong), LatLong, zipCode, count, weight) );
+			// save for the current session
+			mapData[zipCode] = {
+				"count": count,
+				"weight": weight,
+				"loc": LatLong
+			}
+			found = true;
 		}
 	}
 	
-	// if we don't have then get it with geocoder api call
-	else {
+	// if we don't have it yet then get it with geocoder api call
+	if (!found) {
 		geocoder.geocode( {'address':zipCode}, function(data, status) {
 			if (status == google.maps.GeocoderStatus.OK) {
 				var marker = new google.maps.Marker({
@@ -158,9 +184,15 @@ function plotMapMarkerZip(zipCode,count,weight) {
 					"loc": data[0].geometry.location
 				}
 				// save to databank
-				zipDatabase[zipCode] = data[0].geometry.location;
+				if (Object.keys(zipDatabase[curr_db_num]).length > 50) {
+					zipDatabase.push({});
+					curr_db_num++;
+				}
+				zipDatabase[curr_db_num][zipCode] = data[0].geometry.location;
 				// update the cookie!
-				$.cookie("zip-plot-latlong-data", JSON.stringify(zipDatabase));
+				for (var i=0; i<zipDatabase.length; i++) {
+					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]));
+				}
 				dataResponse(true);
 			}
 			else {
@@ -183,23 +215,27 @@ function plotMapMarker(location) {
 // plot the zip code as a circle on the map
 function plotMapCircleZip(zipCode,count,weight) {
 	
+	var found = false;
 	// check the database to see if we have a LatLong for this code
-	if (zipDatabase[zipCode]) {
-		var Lat = zipDatabase[zipCode]['k'];
-		var Long = zipDatabase[zipCode]['B'];
-		var LatLong = new google.maps.LatLng(Lat,Long);
-		// create a new marker
-		mapItems.push( bindInfoWindow(plotMapCircle(LatLong,count), LatLong, zipCode, count, weight) );
-		// save for the current session
-		mapData[zipCode] = {
-			"count": count,
-			"weight": weight,
-			"loc": LatLong
+	for (var i=0; i<zipDatabase.length; i++) {
+		if (zipDatabase[zipCode]) {
+			var Lat = zipDatabase[zipCode]['k'];
+			var Long = zipDatabase[zipCode]['B'];
+			var LatLong = new google.maps.LatLng(Lat,Long);
+			// create a new marker
+			mapItems.push( bindInfoWindow(plotMapCircle(LatLong,count), LatLong, zipCode, count, weight) );
+			// save for the current session
+			mapData[zipCode] = {
+				"count": count,
+				"weight": weight,
+				"loc": LatLong
+			}
+			found = true;
 		}
 	}
 	
 	// if we don't have then get it with geocoder api call
-	else {
+	if (!found) {
 		geocoder.geocode( {'address':zipCode}, function(data, status) {
 			if (status == google.maps.GeocoderStatus.OK) {
 				var color = fractionToRGB(count, total_count);
@@ -223,10 +259,11 @@ function plotMapCircleZip(zipCode,count,weight) {
 					"loc": data[0].geometry.location
 				}
 				// save to databank
-				zipDatabase[zipCode] = data[0].geometry.location;
+				zipDatabase[curr_db_num][zipCode] = data[0].geometry.location;
 				// update the cookie!
-				$.cookie("zip-plot-latlong-data", JSON.stringify(zipDatabase));
-				dataResponse(true);
+				for (var i=0; i<zipDatabase.length; i++) {
+					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]));
+				}
 			}
 			else {
 				console.log("error in request!");
