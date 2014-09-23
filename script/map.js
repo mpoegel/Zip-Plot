@@ -43,15 +43,6 @@ function componentToHex(c) {
 	return hex.length == 1 ? "0" + hex : hex;
 }
 
-function sleep(milliseconds) {
-  var start = new Date().getTime();
-  for (var i = 0; i < 1e7; i++) {
-    if ((new Date().getTime() - start) > milliseconds){
-      break;
-    }
-  }
-}
-
 // takes fraction of a whole and returns an RGB representation of that fraction
 function fractionToRGB(part, total) {
 	var i = Math.floor( Math.log(part / total * 100) * 100);
@@ -64,7 +55,7 @@ function fractionToRGB(part, total) {
 		rgb = "#" + hex + "0000";
 	}
 	// less than 3 is green
-	else if (i < Math.log(Math.sqrt(total)*10)) {
+	else if (i < Math.log(Math.sqrt(total)/10)) { // this is meaningless what is maths
 		rgb = "#" + "00" + hex + "00";
 	}
 	// greater than 3 is blue
@@ -75,10 +66,41 @@ function fractionToRGB(part, total) {
 	return rgb;
 }
 
+function ratioToRGB(ratios) {
+	var rollup = 0;
+	var base = ratios[0]; // first entry is the base
+	// roll the rest up into one value 
+	// ratio of 0 to >0
+	for (var i = 1; i<ratios.length; i++) {
+		rollup += ratios[i];
+	}
+	
+	var rgb = '';
+	var perc = rollup / base * 100;
+	if (perc < 5) {
+		rgb = "#FF0000"; // red
+	}
+	else if (perc < 15) {
+		rgb = "#00FF00"; // green
+	}
+	else {
+		rgb = "#0000FF"; // blue
+	}
+	
+	return rgb;
+}
+
 // binds an info window to the map item to display on hover
-function bindInfoWindow(item, loc, code, count, weight) {
+function bindInfoWindow(item, loc, code, data) {
+	
+	// html string to display 'weight : count'
+	var count_text = "";
+	for (var i = 0; i<data["counts"].length; i++) {
+		count_text += i.toString() + " : " + data["counts"][i].toString() + "<br>";
+	}
+	
 	google.maps.event.addListener(item, 'mouseover', function() {
-		infoWindow.setContent("<p>" + code + "</p>");
+		infoWindow.setContent("<p><b>" + code + "</b><br>" + count_text + "</p>");
 		infoWindow.setPosition(loc);
 		infoWindow.open(map);
 	});
@@ -98,7 +120,7 @@ function getPlotFunction() {
 		return plotMapCircleZip;
 	}
 	else if (c_display_option == "weight_ratio") {
-		return null;
+		return plotMapWeightZip;
 	}
 	else if (c_display_option == "heatmap") {
 		return null;
@@ -143,7 +165,7 @@ function dataResponse(success) {
 }
 
 // take a zip code as a string and mark its location on the map
-function plotMapMarkerZip(zipCode,count,weight) {
+function plotMapMarkerZip(zipCode,data) {
 	
 	// clear alerts
 	$("#alertBox").empty();
@@ -156,11 +178,10 @@ function plotMapMarkerZip(zipCode,count,weight) {
 			var Long = zipDatabase[i][zipCode]['B'];
 			var LatLong = new google.maps.LatLng(Lat,Long);
 			// create a new marker
-			mapItems.push( bindInfoWindow(plotMapMarker(LatLong), LatLong, zipCode, count, weight) );
+			mapItems.push( bindInfoWindow(plotMapMarker(LatLong), LatLong, zipCode, data) );
 			// save for the current session
 			mapData[zipCode] = {
-				"count": count,
-				"weight": weight,
+				"data": data,
 				"loc": LatLong
 			}
 			found = true;
@@ -176,11 +197,10 @@ function plotMapMarkerZip(zipCode,count,weight) {
 					position: data[0].geometry.location
 				});
 				// add the marker to the list 
-				mapItems.push( bindInfoWindow(marker, data[0].geometry.location, zipCode, count, weight) );
+				mapItems.push( bindInfoWindow(marker, data[0].geometry.location, zipCode, data) );
 				// save the data
 				mapData[zipCode] = {
-					"count": count,
-					"weight": weight,
+					"data": data,
 					"loc": data[0].geometry.location
 				}
 				// save to databank
@@ -213,7 +233,7 @@ function plotMapMarker(location) {
 }
 
 // plot the zip code as a circle on the map
-function plotMapCircleZip(zipCode,count,weight) {
+function plotMapCircleZip(zipCode,data) {
 	
 	var found = false;
 	// check the database to see if we have a LatLong for this code
@@ -223,11 +243,10 @@ function plotMapCircleZip(zipCode,count,weight) {
 			var Long = zipDatabase[zipCode]['B'];
 			var LatLong = new google.maps.LatLng(Lat,Long);
 			// create a new marker
-			mapItems.push( bindInfoWindow(plotMapCircle(LatLong,count), LatLong, zipCode, count, weight) );
+			mapItems.push( bindInfoWindow(plotMapCircle(LatLong,data), LatLong, zipCode, data) );
 			// save for the current session
 			mapData[zipCode] = {
-				"count": count,
-				"weight": weight,
+				"data": data,
 				"loc": LatLong
 			}
 			found = true;
@@ -236,7 +255,8 @@ function plotMapCircleZip(zipCode,count,weight) {
 	
 	// if we don't have then get it with geocoder api call
 	if (!found) {
-		geocoder.geocode( {'address':zipCode}, function(data, status) {
+		var count = data["counts"][0];
+		geocoder.geocode( {'address':zipCode}, function(locData, status) {
 			if (status == google.maps.GeocoderStatus.OK) {
 				var color = fractionToRGB(count, total_count);
 				var circleOptions = {
@@ -246,20 +266,19 @@ function plotMapCircleZip(zipCode,count,weight) {
 					fillColor: color,
 					fillOpacity: 0.35,
 					map: map,
-					center: data[0].geometry.location,
+					center: locData[0].geometry.location,
 					radius: 5000
 				};
-				mapItems.push( bindInfoWindow(new google.maps.Circle(circleOptions), data[0].geometry.location, zipCode, count, weight) );
+				mapItems.push( bindInfoWindow(new google.maps.Circle(circleOptions), locData[0].geometry.location, zipCode, data) );
 				// add the marker to the list 
 				mapItems.push(circle);
 				// save the data
 				mapData[zipCode] = {
-					"count": count,
-					"weight": weight,
-					"loc": data[0].geometry.location
+					"data": data,
+					"loc": locData[0].geometry.location
 				}
 				// save to databank
-				zipDatabase[curr_db_num][zipCode] = data[0].geometry.location;
+				zipDatabase[curr_db_num][zipCode] = locData[0].geometry.location;
 				// update the cookie!
 				for (var i=0; i<zipDatabase.length; i++) {
 					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]));
@@ -275,8 +294,85 @@ function plotMapCircleZip(zipCode,count,weight) {
 }
 
 // plot the location as a circle on the map
-function plotMapCircle(location,count) {
+function plotMapCircle(location,data) {
+	var count = data["counts"][0];
 	var color = fractionToRGB(count, total_count);
+	var circleOptions = {
+		strokeColor: color,
+		strokeOpacity: 0.35,
+		strokeWeight: 2,
+		fillColor: color,
+		fillOpacity: 0.35,
+		map: map,
+		center: location,
+		radius: 5000
+	};
+	var circle = new google.maps.Circle(circleOptions);
+	return circle;
+}
+
+// plot the weight data from a zip code 
+function plotMapWeightZip(zipCode, data) {
+	
+	var found = false;
+	// check the database to see if we have a LatLong for this code
+	for (var i=0; i<zipDatabase.length; i++) {
+		if (zipDatabase[zipCode]) {
+			var Lat = zipDatabase[zipCode]['k'];
+			var Long = zipDatabase[zipCode]['B'];
+			var LatLong = new google.maps.LatLng(Lat,Long);
+			// create a new marker
+			mapItems.push( bindInfoWindow(plotMapWeight(LatLong,data), LatLong, zipCode, data) );
+			// save for the current session
+			mapData[zipCode] = {
+				"data": data,
+				"loc": LatLong
+			}
+			found = true;
+		}
+	}
+	
+	// if we don't have then get it with geocoder api call
+	if (!found) {
+		geocoder.geocode( {'address':zipCode}, function(locData, status) {
+			if (status == google.maps.GeocoderStatus.OK) {
+				var color = ratioToRGB(data["counts"]);
+				var circleOptions = {
+					strokeColor: color,
+					strokeOpacity: 0.35,
+					strokeWeight: 2,
+					fillColor: color,
+					fillOpacity: 0.35,
+					map: map,
+					center: locData[0].geometry.location,
+					radius: 5000
+				};
+				mapItems.push( bindInfoWindow(new google.maps.Circle(circleOptions), locData[0].geometry.location, zipCode, data) );
+				// add the marker to the list 
+				mapItems.push(circle);
+				// save the data
+				mapData[zipCode] = {
+					"data": data,
+					"loc": locData[0].geometry.location
+				}
+				// save to databank
+				zipDatabase[curr_db_num][zipCode] = locData[0].geometry.location;
+				// update the cookie!
+				for (var i=0; i<zipDatabase.length; i++) {
+					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]));
+				}
+			}
+			else {
+				console.log("error in request!");
+				dataResponse(false)
+			}
+		});
+	}
+}
+
+// plot the weight data from a location 
+function plotMapWeight(location, data) {
+	var color = ratioToRGB(data["counts"]);
 	var circleOptions = {
 		strokeColor: color,
 		strokeOpacity: 0.35,
@@ -342,8 +438,9 @@ function addManualData() {
 	
 	// get the function to plot the data according to the current setting 
 	count = parseInt(count);
+	var data = {"counts": [count]};
 	var plot = getPlotFunction();
-	plot(code,count,weight);
+	plot(code, data);
 	total_count += count;
 	
 	// clear the data entered in the form
@@ -374,18 +471,17 @@ function plotAllData() {
 	$.each( mapData, function( k,v ) {
 		// information at current point
 		var code = k;
-		var weight = v["weight"];
-		var count = v["count"];
+		var data = v["data"];
 		var loc = v["loc"];
 		// map it depending on the selected option
 		if (c_display_option == "location") {
-			mapItems.push(bindInfoWindow(plotMapMarker(loc), loc, code, count, weight));
+			mapItems.push(bindInfoWindow(plotMapMarker(loc), loc, code, data));
 		}
 		else if (c_display_option == "total_number") {
-			mapItems.push(bindInfoWindow(plotMapCircle(loc,count), loc, code, count, weight));
+			mapItems.push(bindInfoWindow(plotMapCircle(loc,data), loc, code, data));
 		}
 		else if (c_display_option == "weight_ratio") {
-			
+			mapItems.push(bindInfoWindow(plotMapWeight(loc,data), loc, code, data));
 		}
 		else if (c_display_option == "heatmap") {
 			
@@ -428,15 +524,19 @@ function addDataFromFile() {
 					errors++;
 				}				
 				else {
-					// basic plot to start
+					// first comes the zip code
 					var code = data[i][0];
-					var count = data[i][1];
-					count = parseInt(count);
-					total_count += count;
-					var weight = 0;
+					// then the rest is count data 
+					var datum = {"counts": []};
+					var k = 1; // starts at the (second) index
+					while (data[i][k]) {
+						datum["counts"].push(parseInt(data[i][k]));
+						k++;
+					}
+					total_count += datum["counts"][0]; // only use the first entry for this 
 					
-					plot(code,count,weight);
-					successes++;
+					plot(code,datum);
+					successes++; // well..... not really
 				}
 			}
 			
