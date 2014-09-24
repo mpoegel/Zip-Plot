@@ -6,6 +6,7 @@ var mapItems = [];
 var zipDatabase = [];
 var curr_cookie_name = "zip-plot-latlong-data"
 var curr_db_num = 0;
+var COOKIE_MAX = 15;
 var c_display_option;
 var total_count = 0;
 var infoWindow;
@@ -27,7 +28,9 @@ function initialize() {
 		zipDatabase.push(JSON.parse(cookies));
 		cookies = $.cookie("zip-plot-latlong-data-" + i.toString());
 		i++;
-		curr_db_num++;
+		if (cookies) {
+			curr_db_num++;
+		}
 	}
 	if (!zipDatabase[curr_db_num]) {
 		zipDatabase.push({});
@@ -37,10 +40,6 @@ function initialize() {
 	infoWindow = new google.maps.InfoWindow({
 		content: 'hello'
 	});
-}
-function componentToHex(c) {
-	var hex = c.toString(16);
-	return hex.length == 1 ? "0" + hex : hex;
 }
 
 // takes fraction of a whole and returns an RGB representation of that fraction
@@ -92,7 +91,6 @@ function ratioToRGB(ratios) {
 
 // binds an info window to the map item to display on hover
 function bindInfoWindow(item, loc, code, data) {
-	
 	// html string to display 'weight : count'
 	var count_text = "";
 	for (var i = 0; i<data["counts"].length; i++) {
@@ -100,7 +98,7 @@ function bindInfoWindow(item, loc, code, data) {
 	}
 	
 	google.maps.event.addListener(item, 'mouseover', function() {
-		infoWindow.setContent("<p><b>" + code + "</b><br>" + count_text + "</p>");
+		infoWindow.setContent("<div class='info-box'><b>" + code + "</b><br>" + count_text + "</div>");
 		infoWindow.setPosition(loc);
 		infoWindow.open(map);
 	});
@@ -166,7 +164,6 @@ function dataResponse(success) {
 
 // take a zip code as a string and mark its location on the map
 function plotMapMarkerZip(zipCode,data) {
-	
 	// clear alerts
 	$("#alertBox").empty();
 	
@@ -174,41 +171,49 @@ function plotMapMarkerZip(zipCode,data) {
 	// check the database to see if we have a LatLong for this code
 	for (var i=0; i<zipDatabase.length; i++) {
 		if (zipDatabase[i][zipCode]) {
-			var Lat = zipDatabase[i][zipCode]['k'];
-			var Long = zipDatabase[i][zipCode]['B'];
+			var Lat = zipDatabase[i][zipCode]['center']['k'];
+			var Long = zipDatabase[i][zipCode]['center']['B'];
 			var LatLong = new google.maps.LatLng(Lat,Long);
-			// create a new marker
+			var bounds = zipDatabase[i][zipCode]["bounds"]; // needed for other shapes
+			// create a new marker, attach an infoWindow and add it to map items
 			mapItems.push( bindInfoWindow(plotMapMarker(LatLong), LatLong, zipCode, data) );
 			// save for the current session
 			mapData[zipCode] = {
 				"data": data,
-				"loc": LatLong
+				"center": LatLong,
+				"bounds": bounds
 			}
 			found = true;
 		}
 	}
-	
 	// if we don't have it yet then get it with geocoder api call
 	if (!found) {
-		geocoder.geocode( {'address':zipCode}, function(data, status) {
+		geocoder.geocode( {'address':zipCode}, function(locData, status) {
 			if (status == google.maps.GeocoderStatus.OK) {
+				var center_LatLong = locData[0].geometry.location;
+				var r_bounds = locData[0].geometry.bounds;
 				var marker = new google.maps.Marker({
 					map: map,
-					position: data[0].geometry.location
+					position: center_LatLong
 				});
 				// add the marker to the list 
-				mapItems.push( bindInfoWindow(marker, data[0].geometry.location, zipCode, data) );
+				mapItems.push( bindInfoWindow(marker, center_LatLong, zipCode, data) );
 				// save the data
 				mapData[zipCode] = {
 					"data": data,
-					"loc": data[0].geometry.location
+					"center": center_LatLong,
+					"bounds": r_bounds
 				}
-				// save to databank
-				if (Object.keys(zipDatabase[curr_db_num]).length > 50) {
+				// make sure there is space in the current cookie
+				if (Object.keys(zipDatabase[curr_db_num]).length > COOKIE_MAX) {
 					zipDatabase.push({});
 					curr_db_num++;
 				}
-				zipDatabase[curr_db_num][zipCode] = data[0].geometry.location;
+				// save to databank
+				zipDatabase[curr_db_num][zipCode] = {
+					"center": center_LatLong,
+					"bounds": r_bounds
+				};
 				// update the cookie!
 				for (var i=0; i<zipDatabase.length; i++) {
 					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]));
@@ -239,16 +244,27 @@ function plotMapCircleZip(zipCode,data) {
 	// check the database to see if we have a LatLong for this code
 	for (var i=0; i<zipDatabase.length; i++) {
 		if (zipDatabase[zipCode]) {
-			var Lat = zipDatabase[zipCode]['k'];
-			var Long = zipDatabase[zipCode]['B'];
-			var LatLong = new google.maps.LatLng(Lat,Long);
-			// create a new marker
-			mapItems.push( bindInfoWindow(plotMapCircle(LatLong,data), LatLong, zipCode, data) );
+			// create the boundary object for the rectangle from the saved data
+			var b_Lat1 =  zipDatabase[zipCode]["bounds"]['Ea']['k'];
+			var b_Long1 = zipDatabase[zipCode]["bounds"]['Ea']['j'];
+			var b_Lat2 =  zipDatabase[zipCode]["bounds"]['ua']['k'];
+			var b_Long2 = zipDatabase[zipCode]["bounds"]['ua']['j'];
+			var r_bounds = new google.maps.LatLngBounds(
+				new google.maps.LatLng(b_Lat1,b_Long1),
+				new google.maps.LatLng(b_Lat2,b_Long2));
+			// grab the center
+			console.log(r_bounds);
+			var center_LatLong = new google.maps.LatLng(
+				zipDatabase[zipCode]["center"]['k'],
+				zipDatabase[zipCode]["center"]['B']);
+			// create a new rectangle, attach infoWindow, and add to map items
+			mapItems.push( bindInfoWindow(plotMapCircle(r_bounds,data), center_LatLong, zipCode, data) );
 			// save for the current session
 			mapData[zipCode] = {
 				"data": data,
-				"loc": LatLong
-			}
+				"center": center_LatLong,
+				"bounds": r_bounds
+			};
 			found = true;
 		}
 	}
@@ -259,26 +275,31 @@ function plotMapCircleZip(zipCode,data) {
 		geocoder.geocode( {'address':zipCode}, function(locData, status) {
 			if (status == google.maps.GeocoderStatus.OK) {
 				var color = fractionToRGB(count, total_count);
-				var circleOptions = {
+				var r_bounds = locData[0].geometry.bounds
+				var center_LatLong = locData[0].geometry.location;
+				// define a new rectangle
+				var rectangleOptions = {
 					strokeColor: color,
 					strokeOpacity: 0.35,
 					strokeWeight: 2,
 					fillColor: color,
 					fillOpacity: 0.35,
 					map: map,
-					center: locData[0].geometry.location,
-					radius: 5000
+					bounds: r_bounds
 				};
-				mapItems.push( bindInfoWindow(new google.maps.Circle(circleOptions), locData[0].geometry.location, zipCode, data) );
-				// add the marker to the list 
-				mapItems.push(circle);
+				// create the rectangle, attach an infoWindow, and add to map items
+				mapItems.push( bindInfoWindow(new google.maps.Rectangle(rectangleOptions), center_LatLong, zipCode, data) );
 				// save the data
 				mapData[zipCode] = {
 					"data": data,
-					"loc": locData[0].geometry.location
-				}
+					"center": center_LatLong,
+					"bounds": r_bounds
+				};
 				// save to databank
-				zipDatabase[curr_db_num][zipCode] = locData[0].geometry.location;
+				zipDatabase[curr_db_num][zipCode] = {
+					"center": center_LatLong,
+					"bounds": r_bounds
+				};
 				// update the cookie!
 				for (var i=0; i<zipDatabase.length; i++) {
 					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]));
@@ -294,21 +315,20 @@ function plotMapCircleZip(zipCode,data) {
 }
 
 // plot the location as a circle on the map
-function plotMapCircle(location,data) {
+function plotMapCircle(r_bounds,data) {
 	var count = data["counts"][0];
 	var color = fractionToRGB(count, total_count);
-	var circleOptions = {
+	var rectangleOptions = {
 		strokeColor: color,
 		strokeOpacity: 0.35,
 		strokeWeight: 2,
 		fillColor: color,
 		fillOpacity: 0.35,
 		map: map,
-		center: location,
-		radius: 5000
+		bounds: r_bounds
 	};
-	var circle = new google.maps.Circle(circleOptions);
-	return circle;
+	var rectangle = new google.maps.Rectangle(rectangleOptions);
+	return rectangle;
 }
 
 // plot the weight data from a zip code 
@@ -318,16 +338,26 @@ function plotMapWeightZip(zipCode, data) {
 	// check the database to see if we have a LatLong for this code
 	for (var i=0; i<zipDatabase.length; i++) {
 		if (zipDatabase[zipCode]) {
-			var Lat = zipDatabase[zipCode]['k'];
-			var Long = zipDatabase[zipCode]['B'];
-			var LatLong = new google.maps.LatLng(Lat,Long);
-			// create a new marker
-			mapItems.push( bindInfoWindow(plotMapWeight(LatLong,data), LatLong, zipCode, data) );
+			// create the boundary object for the rectangle from the saved data
+			var b_Lat1 =  zipDatabase[zipCode]["bounds"]['Ea']['k'];
+			var b_Long1 = zipDatabase[zipCode]["bounds"]['Ea']['j'];
+			var b_Lat2 =  zipDatabase[zipCode]["bounds"]['ua']['k'];
+			var b_Long2 = zipDatabase[zipCode]["bounds"]['ua']['j'];
+			var r_bounds = new google.maps.LatLngBounds(
+				new google.maps.LatLng(b_Lat1,b_Long1),
+				new google.maps.LatLng(b_Lat2,b_Long2));
+			// grab the center
+			var center_LatLong = new google.maps.LatLng(
+				zipDatabase[zipCode]["center"]['k'],
+				zipDatabase[zipCode]["center"]['B']);
+			// create a new rectangle, attach infoWindow, and add to map items
+			mapItems.push( bindInfoWindow(plotMapWeight(r_bounds,data), center_LatLong, zipCode, data) );
 			// save for the current session
 			mapData[zipCode] = {
 				"data": data,
-				"loc": LatLong
-			}
+				"center": center_LatLong,
+				"bounds": r_bounds
+			};
 			found = true;
 		}
 	}
@@ -337,26 +367,32 @@ function plotMapWeightZip(zipCode, data) {
 		geocoder.geocode( {'address':zipCode}, function(locData, status) {
 			if (status == google.maps.GeocoderStatus.OK) {
 				var color = ratioToRGB(data["counts"]);
-				var circleOptions = {
+				var r_bounds = locData[0].geometry.bounds
+				var center_LatLong = locData[0].geometry.location;
+				var rectangleOptions = {
 					strokeColor: color,
 					strokeOpacity: 0.35,
 					strokeWeight: 2,
 					fillColor: color,
 					fillOpacity: 0.35,
 					map: map,
-					center: locData[0].geometry.location,
-					radius: 5000
+					bounds: r_bounds
 				};
-				mapItems.push( bindInfoWindow(new google.maps.Circle(circleOptions), locData[0].geometry.location, zipCode, data) );
-				// add the marker to the list 
-				mapItems.push(circle);
+				
+				// create the rectangle, attach an infoWindow, and add it to mapItems
+				mapItems.push( bindInfoWindow(new google.maps.Rectangle(rectangleOptions), center_LatLong, zipCode, data) );
+				 
 				// save the data
 				mapData[zipCode] = {
 					"data": data,
-					"loc": locData[0].geometry.location
+					"center": center_LatLong,
+					"bounds": r_bounds
 				}
 				// save to databank
-				zipDatabase[curr_db_num][zipCode] = locData[0].geometry.location;
+				zipDatabase[curr_db_num][zipCode] = {
+					"center": center_LatLong,
+					"bounds": r_bounds
+				};
 				// update the cookie!
 				for (var i=0; i<zipDatabase.length; i++) {
 					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]));
@@ -371,20 +407,19 @@ function plotMapWeightZip(zipCode, data) {
 }
 
 // plot the weight data from a location 
-function plotMapWeight(location, data) {
+function plotMapWeight(r_bounds, data) {
 	var color = ratioToRGB(data["counts"]);
-	var circleOptions = {
+	var rectangleOptions = {
 		strokeColor: color,
 		strokeOpacity: 0.35,
 		strokeWeight: 2,
 		fillColor: color,
 		fillOpacity: 0.35,
 		map: map,
-		center: location,
-		radius: 5000
+		bounds: r_bounds
 	};
-	var circle = new google.maps.Circle(circleOptions);
-	return circle;
+	var rectangle = new google.maps.Rectangle(rectangleOptions);
+	return rectangle;
 }
 
 // capture the data from manual entry and plot appropriately
@@ -471,17 +506,29 @@ function plotAllData() {
 	$.each( mapData, function( k,v ) {
 		// information at current point
 		var code = k;
+		console.log(k);
 		var data = v["data"];
-		var loc = v["loc"];
+		var center_loc = v["center"];
+		if (!v["bounds"]) {
+			console.log(k);
+			return true; // not all of the data will have bounds (ADD REPLACEMENT!)
+		}
+		var b_Lat1 =  v["bounds"]['Ea']['j'];
+		var b_Long1 = v["bounds"]['ua']['j'];
+		var b_Lat2 =  v["bounds"]['Ea']['k'];
+		var b_Long2 = v["bounds"]['ua']['k'];
+		var bounds = new google.maps.LatLngBounds(
+			new google.maps.LatLng(b_Lat1,b_Long1),
+			new google.maps.LatLng(b_Lat2,b_Long2));
 		// map it depending on the selected option
 		if (c_display_option == "location") {
-			mapItems.push(bindInfoWindow(plotMapMarker(loc), loc, code, data));
+			mapItems.push(bindInfoWindow(plotMapMarker(center_loc), center_loc, code, data));
 		}
 		else if (c_display_option == "total_number") {
-			mapItems.push(bindInfoWindow(plotMapCircle(loc,data), loc, code, data));
+			mapItems.push(bindInfoWindow(plotMapCircle(bounds,data), center_loc, code, data));
 		}
 		else if (c_display_option == "weight_ratio") {
-			mapItems.push(bindInfoWindow(plotMapWeight(loc,data), loc, code, data));
+			mapItems.push(bindInfoWindow(plotMapWeight(bounds,data), center_loc, code, data));
 		}
 		else if (c_display_option == "heatmap") {
 			
