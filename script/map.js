@@ -295,6 +295,11 @@ function plotMapCircleZip(zipCode,data) {
 					"center": center_LatLong,
 					"bounds": r_bounds
 				};
+				// make sure there is space in the current cookie
+				if (Object.keys(zipDatabase[curr_db_num]).length > COOKIE_MAX) {
+					zipDatabase.push({});
+					curr_db_num++;
+				}
 				// save to databank
 				zipDatabase[curr_db_num][zipCode] = {
 					"center": center_LatLong,
@@ -377,16 +382,19 @@ function plotMapWeightZip(zipCode, data) {
 					fillOpacity: 0.35,
 					map: map,
 					bounds: r_bounds
-				};
-				
+				};				
 				// create the rectangle, attach an infoWindow, and add it to mapItems
 				mapItems.push( bindInfoWindow(new google.maps.Rectangle(rectangleOptions), center_LatLong, zipCode, data) );
-				 
 				// save the data
 				mapData[zipCode] = {
 					"data": data,
 					"center": center_LatLong,
 					"bounds": r_bounds
+				}
+				// make sure there is space in the current cookie
+				if (Object.keys(zipDatabase[curr_db_num]).length > COOKIE_MAX) {
+					zipDatabase.push({});
+					curr_db_num++;
 				}
 				// save to databank
 				zipDatabase[curr_db_num][zipCode] = {
@@ -506,11 +514,9 @@ function plotAllData() {
 	$.each( mapData, function( k,v ) {
 		// information at current point
 		var code = k;
-		console.log(k);
 		var data = v["data"];
 		var center_loc = v["center"];
 		if (!v["bounds"]) {
-			console.log(k);
 			return true; // not all of the data will have bounds (ADD REPLACEMENT!)
 		}
 		var b_Lat1 =  v["bounds"]['Ea']['j'];
