@@ -10,6 +10,7 @@ var COOKIE_MAX = 15;
 var c_display_option;
 var total_count = 0;
 var infoWindow;
+var COOKIE_BATCH_MAX = 16;
 
 // initialize the map and geocoder and other stuff
 function initialize() {
@@ -215,7 +216,7 @@ function plotMapMarkerZip(zipCode,data) {
 					"bounds": r_bounds
 				};
 				// update the cookie!
-				for (var i=0; i<zipDatabase.length; i++) {
+				for (var i=0; i<zipDatabase.length && i<COOKIE_BATCH_MAX; i++) {
 					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]), { expires: 30 });
 				}
 				dataResponse(true);
@@ -306,7 +307,7 @@ function plotMapCircleZip(zipCode,data) {
 					"bounds": r_bounds
 				};
 				// update the cookie!
-				for (var i=0; i<zipDatabase.length; i++) {
+				for (var i=0; i<zipDatabase.length && i<COOKIE_BATCH_MAX; i++) {
 					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]), { expires: 30 });
 				}
 			}
@@ -402,7 +403,7 @@ function plotMapWeightZip(zipCode, data) {
 					"bounds": r_bounds
 				};
 				// update the cookie!
-				for (var i=0; i<zipDatabase.length; i++) {
+				for (var i=0; i<zipDatabase.length && i<COOKIE_BATCH_MAX; i++) {
 					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]), { expires: 30 });
 				}
 			}
