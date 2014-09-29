@@ -216,7 +216,7 @@ function plotMapMarkerZip(zipCode,data) {
 				};
 				// update the cookie!
 				for (var i=0; i<zipDatabase.length; i++) {
-					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]));
+					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]), { expires: 30 });
 				}
 				dataResponse(true);
 			}
@@ -307,7 +307,7 @@ function plotMapCircleZip(zipCode,data) {
 				};
 				// update the cookie!
 				for (var i=0; i<zipDatabase.length; i++) {
-					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]));
+					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]), { expires: 30 });
 				}
 			}
 			else {
@@ -403,7 +403,7 @@ function plotMapWeightZip(zipCode, data) {
 				};
 				// update the cookie!
 				for (var i=0; i<zipDatabase.length; i++) {
-					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]));
+					$.cookie("zip-plot-latlong-data-" + i.toString(), JSON.stringify(zipDatabase[i]), { expires: 30 });
 				}
 			}
 			else {
@@ -579,6 +579,10 @@ function addDataFromFile() {
 				else {
 					// first comes the zip code
 					var code = data[i][0];
+					// if the code is less than 5 characters then add leading 0's 
+					while (code.length < 5) {
+						code = '0' + code
+					}
 					// then the rest is count data 
 					var datum = {"counts": []};
 					var k = 1; // starts at the (second) index
