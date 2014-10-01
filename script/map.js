@@ -10,7 +10,7 @@ var COOKIE_MAX = 15;
 var c_display_option;
 var total_count = 0;
 var infoWindow;
-var COOKIE_BATCH_MAX = 16;
+var COOKIE_BATCH_MAX = 9999; // ignore this for off-line usage
 
 // initialize the map and geocoder and other stuff
 function initialize() {
